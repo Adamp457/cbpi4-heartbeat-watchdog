@@ -29,6 +29,15 @@ Testing:
   short timeout, read the automation traces, then delete the test automation
   and clear any retained scratch topics.
 
+## Security rule
+
+The blueprint must never publish a topic or payload taken from the heartbeat
+unless it passes the topic-prefix and exact-off-payload allowlists (see the
+README's Security section). Keep that check if you touch the blueprint, and
+re-run the forged-beat test: a "good" actor, an "off" that is really `on`, a
+topic outside the prefix, a wildcard topic, and a non-MQTT actor. Only the
+good one may be published.
+
 ## CBPi 4.7.7 facts this relies on
 
 - Pip plugins load if the top-level module name starts with `cbpi`, and

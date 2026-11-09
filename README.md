@@ -82,6 +82,27 @@ Then in Home Assistant, import the blueprint from its GitHub URL, and create an
 automation from it. Set the timeout (default 15 s) and at least one alert
 action, e.g. a mobile notification using `{{ message }}`.
 
+## Security
+
+The heartbeat tells the watchdog what to publish, retained, with the
+watchdog's broker credentials. Unchecked, anyone who can publish to
+`cbpi/heartbeat` could make it publish anything anywhere, including an
+"off" that actually switches a heater **on**. So the blueprint publishes only
+when **both** of these hold:
+
+- the topic starts with an **allowed prefix** (default `cbpi/actor/`), and has
+  no MQTT wildcards;
+- the payload exactly matches an **allowed off payload** (defaults:
+  `{"state": "off", "power": 0}`, `OFF`, `off`).
+
+Anything else is refused and named in the alert. Set the prefixes to where
+your actor topics actually live. If you use `GenericMqttActor`, add its
+rendered off payload.
+
+Also restrict who can publish to `cbpi/heartbeat` with broker ACLs. The
+allowlist stops a forged beat switching things on, but a forged beat
+saying `on: []` can still hide a real failure from the watchdog.
+
 ## Limits
 
 - **One CBPi per broker.** The topic is fixed.

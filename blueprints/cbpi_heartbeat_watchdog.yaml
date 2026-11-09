@@ -12,6 +12,13 @@ blueprint:
     relay boards) can't be switched off from here; they're named in the alert.
 
 
+    The heartbeat says what to publish, so anyone who can publish to its topic
+    could otherwise make HA publish anything. Only topics under the allowed
+    prefixes, with a payload on the allowed off list, are ever published;
+    anything else is refused and named in the alert. Restrict who can publish
+    to the heartbeat topic with broker ACLs too.
+
+
     This is a convenience fallback, not a safety system. Fit hardwired
     over-temperature and dry-fire cutouts on every element.
   domain: automation
@@ -31,6 +38,26 @@ blueprint:
           min: 5
           max: 300
           unit_of_measurement: s
+    allowed_topic_prefixes:
+      name: Allowed actor topic prefixes
+      description: Only actor topics starting with one of these are switched off.
+      default: [cbpi/actor/]
+      selector:
+        text:
+          multiple: true
+    allowed_off_payloads:
+      name: Allowed off payloads
+      description: >-
+        Exact payloads that may be published. The defaults are what CBPi's
+        MQTTActor and Tasmota actor publish for off; add your GenericMqttActor's
+        rendered off payload if you use one.
+      default:
+        - '{"state": "off", "power": 0}'
+        - "OFF"
+        - "off"
+      selector:
+        text:
+          multiple: true
     alert_actions:
       name: Alert actions
       description: >-
@@ -49,6 +76,8 @@ triggers:
 
 variables:
   timeout: !input timeout
+  allowed_prefixes: !input allowed_topic_prefixes
+  allowed_offs: !input allowed_off_payloads
   beat: "{{ trigger.payload_json if trigger.payload_json is mapping else {} }}"
   actors_on: "{{ beat.on | default([]) }}"
 
@@ -67,13 +96,24 @@ actions:
       reason: >-
         {{ 'CBPi stopped with actors still on' if beat.state == 'stopped'
            else 'No CBPi heartbeat for ' ~ timeout ~ ' s' }}
-      switched_off: "{{ actors_on | selectattr('topic') | map(attribute='name') | list }}"
-      not_switched: "{{ actors_on | rejectattr('topic') | map(attribute='name') | list }}"
+      to_switch: >-
+        {% set ns = namespace(ok=[], hit=false) %}
+        {% for a in actors_on if a.topic is string and a.off is string
+             and a.off in allowed_offs and '#' not in a.topic and '+' not in a.topic %}
+          {% set ns.hit = false %}
+          {% for p in allowed_prefixes if a.topic.startswith(p) %}{% set ns.hit = true %}{% endfor %}
+          {% if ns.hit %}{% set ns.ok = ns.ok + [a] %}{% endif %}
+        {% endfor %}
+        {{ ns.ok }}
+      switched_off: "{{ to_switch | map(attribute='name') | list }}"
+      not_switched: >-
+        {{ actors_on | rejectattr('name', 'in', switched_off) | map(attribute='name') | list }}
       message: >-
         {{ reason }}. Switched off: {{ switched_off | join(', ') or 'none' }}.
-        {%- if not_switched %} NOT switched off (not MQTT actors): {{ not_switched | join(', ') }}.{% endif %}
+        {%- if not_switched %} NOT switched off (not an MQTT actor, or topic/payload not
+        on the allowlist): {{ not_switched | join(', ') }}.{% endif %}
   - repeat:
-      for_each: "{{ actors_on | selectattr('topic') | list }}"
+      for_each: "{{ to_switch }}"
       sequence:
         - action: mqtt.publish
           data:
