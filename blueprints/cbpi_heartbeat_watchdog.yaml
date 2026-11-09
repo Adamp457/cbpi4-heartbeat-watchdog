@@ -1,0 +1,85 @@
+blueprint:
+  name: CBPi heartbeat watchdog
+  description: >-
+    Switches CraftBeerPi's MQTT actors off if CBPi dies, hangs or stops while
+    they are on. Needs the cbpi4-heartbeat-watchdog CBPi plugin, which publishes
+    every actor that is on, and its MQTT off payload, once a second.
+
+
+    If the heartbeat goes silent for the timeout, or CBPi stops cleanly with
+    actors still on, this publishes each one's off payload (retained, as CBPi
+    does) and runs your alert actions. Actors that aren't MQTT actors (GPIO,
+    relay boards) can't be switched off from here; they're named in the alert.
+
+
+    This is a convenience fallback, not a safety system. Fit hardwired
+    over-temperature and dry-fire cutouts on every element.
+  domain: automation
+  source_url: https://github.com/Adamp457/cbpi4-heartbeat-watchdog/blob/main/blueprints/cbpi_heartbeat_watchdog.yaml
+  input:
+    heartbeat_topic:
+      name: Heartbeat topic
+      default: cbpi/heartbeat
+      selector:
+        text:
+    timeout:
+      name: Timeout
+      description: Silence this long while actors are on counts as CBPi dead.
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: s
+    alert_actions:
+      name: Alert actions
+      description: >-
+        Run after switching off, e.g. a mobile notification. Variables:
+        `message`, `reason`, `switched_off` and `not_switched` (lists of actor names).
+      default: []
+      selector:
+        action:
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: mqtt
+    topic: !input heartbeat_topic
+
+variables:
+  timeout: !input timeout
+  beat: "{{ trigger.payload_json if trigger.payload_json is mapping else {} }}"
+  actors_on: "{{ beat.on | default([]) }}"
+
+actions:
+  - condition: template
+    value_template: "{{ actors_on | count > 0 }}"
+    note: Nothing on, nothing to protect. Restart mode has already cancelled any pending run.
+  - if:
+      - condition: template
+        value_template: "{{ beat.state != 'stopped' }}"
+    then:
+      - delay:
+          seconds: "{{ timeout }}"
+        note: Each heartbeat restarts the run, so this only completes when they stop.
+  - variables:
+      reason: >-
+        {{ 'CBPi stopped with actors still on' if beat.state == 'stopped'
+           else 'No CBPi heartbeat for ' ~ timeout ~ ' s' }}
+      switched_off: "{{ actors_on | selectattr('topic') | map(attribute='name') | list }}"
+      not_switched: "{{ actors_on | rejectattr('topic') | map(attribute='name') | list }}"
+      message: >-
+        {{ reason }}. Switched off: {{ switched_off | join(', ') or 'none' }}.
+        {%- if not_switched %} NOT switched off (not MQTT actors): {{ not_switched | join(', ') }}.{% endif %}
+  - repeat:
+      for_each: "{{ actors_on | selectattr('topic') | list }}"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "{{ repeat.item.topic }}"
+            payload: "{{ repeat.item.off }}"
+            retain: true
+          continue_on_error: true
+          note: Keep going so one bad topic doesn't leave the rest on.
+  - sequence: !input alert_actions

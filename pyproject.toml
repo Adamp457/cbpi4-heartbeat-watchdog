@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cbpi4-heartbeat-watchdog"
+version = "0.1.0"
+description = "CraftBeerPi 4 heartbeat over MQTT, so an outside watchdog can switch MQTT actors off if CBPi dies"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Adamp457" }]
+dependencies = ["cbpi4>=4.7.7"]
+
+[project.urls]
+Homepage = "https://github.com/Adamp457/cbpi4-heartbeat-watchdog"
+
+[tool.setuptools]
+packages = ["cbpi4_heartbeat_watchdog"]
