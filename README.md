@@ -33,7 +33,9 @@ Two parts that share one contract:
    ([blueprints/cbpi_heartbeat_watchdog.yaml](blueprints/cbpi_heartbeat_watchdog.yaml)).
    If the heartbeat goes silent for the timeout while actors are on, or a
    `stopped` beat lists actors, it publishes each one's off payload (retained,
-   like CBPi does) and runs your alert actions.
+   like CBPi does) and runs your alert actions. With the optional latch
+   (an `input_boolean`) it stays tripped: every later beat that lists actors
+   as on gets their off re-sent at once, until you turn the latch off.
 
 Anything that can subscribe and publish over MQTT can do the job of part 2:
 Node-RED, a script, another controller. The
@@ -87,7 +89,10 @@ settings. The plugin logs a warning and does nothing if MQTT is off.
 
 Then in Home Assistant, import the blueprint from its GitHub URL, and create an
 automation from it. Set the timeout (default 15 s) and at least one alert
-action, e.g. a mobile notification using `{{ message }}`.
+action, e.g. a mobile notification using `{{ message }}`. Create an
+`input_boolean` for the latch and select it, so a CBPi that recovers from a
+hang can't carry on heating. Re-arm by stopping the kettles in CBPi, then
+turning the latch off.
 
 ## Security
 
@@ -142,14 +147,24 @@ python3 -m pip wheel --no-deps --wheel-dir dist .
   CBPi. The glue tests check that beats keep coming after a failed publish,
   that one final `stopped` beat follows cleanup, and that nothing happens
   with MQTT off.
-- **Blueprint** (HA 2026.11, 2026-11-10): tested with a forged `stopped` beat on
-  a scratch topic when the allowlists were added (commit `db590be`). It hasn't
-  been re-run since, and the blueprint is unchanged.
+- **Blueprint with latch** (HA 2026.11, 2026-11-10), on a scratch topic with a
+  5 s timeout, read from the automation traces:
+  - A forged `stopped` beat with five actors published only the good one.
+    It refused an "off" that was really `on`, a topic outside the prefix, a
+    wildcard topic and a non-MQTT actor. It named all four in the alert, and
+    the latch went on.
+  - A `running` beat while latched re-sent the off at once, with no delay and
+    no second alert.
+  - After the latch was turned off, 5 s of silence tripped it again.
+- **Production blueprint automation** (2026-11-10): created with a 15 s
+  timeout and a latch. Live beats reach it once a second, with nothing on.
 - **Production install** (2026-11-10): v0.1.0 installed on a production CBPi
   4.7.7 from the release URL above, using `--no-deps`. It loaded cleanly, and
   beats arrived once a second on the production broker, with nothing on.
 - **Not yet tested:** a production CBPi driving a real kettle with the
   blueprint or the MQTTDevice firmware acting on it.
+- **Latch limit:** while latched, a CBPi that keeps sending `on` can pulse an
+  actor for up to about one beat before the next off lands.
 
 ## Licence
 

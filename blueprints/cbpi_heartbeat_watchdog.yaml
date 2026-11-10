@@ -58,6 +58,18 @@ blueprint:
       selector:
         text:
           multiple: true
+    latch_entity:
+      name: Latch (optional)
+      description: >-
+        An input_boolean this turns on when it trips. While it's on, every beat
+        that lists actors as on gets their off re-sent at once, so a CBPi that
+        recovers from a hang can't keep them on for more than about a beat
+        (PWM pulses up to a second are possible). Turn it off by hand to
+        re-arm, after stopping the kettles in CBPi. Leave empty for no latch.
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
     alert_actions:
       name: Alert actions
       description: >-
@@ -78,6 +90,7 @@ variables:
   timeout: !input timeout
   allowed_prefixes: !input allowed_topic_prefixes
   allowed_offs: !input allowed_off_payloads
+  latch: !input latch_entity
   beat: "{{ trigger.payload_json if trigger.payload_json is mapping else {} }}"
   actors_on: "{{ beat.on | default([]) }}"
 
@@ -85,16 +98,19 @@ actions:
   - condition: template
     value_template: "{{ actors_on | count > 0 }}"
     note: Nothing on, nothing to protect. Restart mode has already cancelled any pending run.
+  - variables:
+      latched: "{{ latch is string and latch != '' and is_state(latch, 'on') }}"
   - if:
       - condition: template
-        value_template: "{{ beat.state != 'stopped' }}"
+        value_template: "{{ not latched and beat.state != 'stopped' }}"
     then:
       - delay:
           seconds: "{{ timeout }}"
         note: Each heartbeat restarts the run, so this only completes when they stop.
   - variables:
       reason: >-
-        {{ 'CBPi stopped with actors still on' if beat.state == 'stopped'
+        {{ 'Latched: CBPi still has actors on, off re-sent' if latched
+           else 'CBPi stopped with actors still on' if beat.state == 'stopped'
            else 'No CBPi heartbeat for ' ~ timeout ~ ' s' }}
       to_switch: >-
         {% set ns = namespace(ok=[], hit=false) %}
@@ -122,4 +138,14 @@ actions:
             retain: true
           continue_on_error: true
           note: Keep going so one bad topic doesn't leave the rest on.
+  - condition: template
+    value_template: "{{ not latched }}"
+    note: While latched, re-send offs quietly; the trip already alerted.
+  - if:
+      - condition: template
+        value_template: "{{ latch is string and latch != '' }}"
+    then:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: "{{ latch }}"
   - sequence: !input alert_actions
