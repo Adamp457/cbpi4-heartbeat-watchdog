@@ -72,11 +72,14 @@ Topic `cbpi/heartbeat`, not retained, every `interval` seconds:
 
 ## Install
 
-On the CBPi host, in CBPi's environment:
+On the CBPi host, in CBPi's environment, install the wheel from the
+[latest release](https://github.com/Adamp457/cbpi4-heartbeat-watchdog/releases/latest).
+It isn't on PyPI.
 
 ```sh
-pipx runpip cbpi4 install cbpi4-heartbeat-watchdog   # or: <cbpi venv>/bin/pip install <wheel>
-sudo systemctl restart craftbeerpi
+pipx runpip cbpi4 install https://github.com/Adamp457/cbpi4-heartbeat-watchdog/releases/download/v0.1.0/cbpi4_heartbeat_watchdog-0.1.0-py3-none-any.whl
+# or: <cbpi venv>/bin/pip install <that URL or a downloaded wheel>
+sudo systemctl restart craftbeerpi   # the unit may be called cbpi on your host
 ```
 
 MQTT must be enabled in CBPi's `config.yaml` (`mqtt: true`). There are no
@@ -122,7 +125,28 @@ python3 -m pytest tests -q
 python3 -m pip wheel --no-deps --wheel-dir dist .
 ```
 
-Tested against CBPi 4.7.7 and Home Assistant 2026.11.
+## Verification
+
+- **Plugin, end to end** (2026-11-10): the 0.1.0 wheel in CBPi 4.7.7
+  (Python 3.13) in a dev rig, against a private broker,
+  recorded with `mosquitto_sub`.
+  - With nothing on, beats arrive once a second.
+  - Switching an `MQTTActor` on lists it within a beat, with the topic and
+    `{"state": "off", "power": 0}`.
+  - A clean stop (`SIGTERM`) sends one `stopped` beat that still lists the
+    actor.
+  - After a restart, beats resume with `on: []`, but the broker still holds
+    the retained `on`. That's the case the watchdog exists for.
+  - After a hard kill (`SIGKILL`), beats stop and no `stopped` beat is sent.
+- **Unit tests:** the payload builder, plus the CBPi glue with a fake
+  CBPi. The glue tests check that beats keep coming after a failed publish,
+  that one final `stopped` beat follows cleanup, and that nothing happens
+  with MQTT off.
+- **Blueprint** (HA 2026.11, 2026-11-10): tested with a forged `stopped` beat on
+  a scratch topic when the allowlists were added (commit `db590be`). It hasn't
+  been re-run since, and the blueprint is unchanged.
+- **Not yet tested:** a production CBPi driving a real kettle with the
+  blueprint or the MQTTDevice firmware acting on it.
 
 ## Licence
 
