@@ -36,7 +36,11 @@ Two parts that share one contract:
    like CBPi does) and runs your alert actions.
 
 Anything that can subscribe and publish over MQTT can do the job of part 2:
-Node-RED, a script, another controller.
+Node-RED, a script, another controller. The
+[MQTTDevice32pIO fork](https://github.com/Adamp457/MQTTDevice32pIO) does it on
+the device itself, with no Home Assistant (see its `docs/heartbeat.md`). It
+only reads `state` and switches off its own actors, so the allowlists below
+don't apply to it.
 
 ## Heartbeat contract (v1)
 
