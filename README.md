@@ -145,6 +145,9 @@ python3 -m pip wheel --no-deps --wheel-dir dist .
 - **Blueprint** (HA 2026.11, 2026-11-10): tested with a forged `stopped` beat on
   a scratch topic when the allowlists were added (commit `db590be`). It hasn't
   been re-run since, and the blueprint is unchanged.
+- **Production install** (2026-11-10): v0.1.0 installed on a production CBPi
+  4.7.7 from the release URL above, using `--no-deps`. It loaded cleanly, and
+  beats arrived once a second on the production broker, with nothing on.
 - **Not yet tested:** a production CBPi driving a real kettle with the
   blueprint or the MQTTDevice firmware acting on it.
 
