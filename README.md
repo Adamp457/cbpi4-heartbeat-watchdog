@@ -181,6 +181,11 @@ python3 -m pip wheel --no-deps --wheel-dir dist .
   `ghcr.io/pibrewing/craftbeerpi4:v4.7.7` container with one WebSocket client
   connected to `/ws`: stock CBPi was still running 70 s after SIGTERM; with
   0.2.0 installed it exited in 1 s. One unit test.
+- **Production install of 0.2.0** (2026-11-11, 22:07): the restart that
+  installed it was still SIGKILLed after 30 s (0.1.0 was stopping). The next
+  restart stopped cleanly in under a second: "closed 2 WebSocket client(s)",
+  then CBPi's controller shutdowns ran. Not checked: that the final `stopped`
+  beat reached HA.
 - **Production blueprint automation** (2026-11-10): created with a 15 s
   timeout and a latch. Live beats reach it once a second, with nothing on.
 - **Production install** (2026-11-10): v0.1.0 installed on a production CBPi
