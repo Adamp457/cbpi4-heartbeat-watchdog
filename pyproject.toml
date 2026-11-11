@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cbpi4-heartbeat-watchdog"
-version = "0.1.0"
+version = "0.2.0"
 description = "CraftBeerPi 4 heartbeat over MQTT, so an outside watchdog can switch MQTT actors off if CBPi dies"
 readme = "README.md"
 requires-python = ">=3.11"

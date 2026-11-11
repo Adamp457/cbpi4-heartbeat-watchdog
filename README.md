@@ -25,6 +25,13 @@ connection drops and the broker sends it at once [Likely: standard MQTT
 broker behaviour, not measured here]. The blueprint uses it for that faster
 path.
 
+It also fixes CBPi 4.7.7's unclean stop. CBPi never closes its WebSocket
+clients, so with any UI tab or kiosk open, aiohttp's graceful shutdown waits
+on them for 60 s. Under systemd's default 30 s stop timeout CBPi is
+SIGKILLed, so nothing registered for shutdown runs: no kettle stop, no state
+save, no final `stopped` beat. From 0.2.0 the plugin closes those clients when
+shutdown starts.
+
 ## What it does
 
 Two parts that share one contract:
@@ -170,6 +177,10 @@ python3 -m pip wheel --no-deps --wheel-dir dist .
   - a `stopped` beat: off published in 8 ms (the wait's timeout is 0 there,
     as it is while latched).
   Not yet seen with CBPi's real will on the production broker.
+- **Clean shutdown** (0.2.0, 2026-11-11), in a throwaway
+  `ghcr.io/pibrewing/craftbeerpi4:v4.7.7` container with one WebSocket client
+  connected to `/ws`: stock CBPi was still running 70 s after SIGTERM; with
+  0.2.0 installed it exited in 1 s. One unit test.
 - **Production blueprint automation** (2026-11-10): created with a 15 s
   timeout and a latch. Live beats reach it once a second, with nothing on.
 - **Production install** (2026-11-10): v0.1.0 installed on a production CBPi

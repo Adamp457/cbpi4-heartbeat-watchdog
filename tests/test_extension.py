@@ -29,7 +29,7 @@ class Satellite:
 
 def fake_cbpi(satellite):
     heater = NS(id='h', name='Heater', instance=NS(get_state=lambda: True, topic='cbpi/actor/h'))
-    return NS(satellite=satellite, actor=NS(data=[heater]), app=NS(on_cleanup=[]))
+    return NS(satellite=satellite, actor=NS(data=[heater]), app=NS(on_cleanup=[], on_shutdown=[]))
 
 
 def run(coro):
@@ -64,3 +64,18 @@ def test_mqtt_disabled_does_nothing():
         return cbpi.app.on_cleanup
 
     assert run(scenario()) == []
+
+
+def test_websockets_closed_on_shutdown():
+    """Open UI WebSockets otherwise hold CBPi's shutdown past systemd's stop timeout."""
+    closed = []
+
+    class WS:
+        async def close(self, code=None, message=None):
+            closed.append(code)
+
+    cbpi = fake_cbpi(None)  # MQTT off: the close is wired up anyway
+    cbpi.ws = NS(_clients={WS(), WS()})
+    ext = extension.Heartbeat(cbpi)
+    run(cbpi.app.on_shutdown[0](None))
+    assert len(closed) == 2 and ext.cbpi is cbpi
