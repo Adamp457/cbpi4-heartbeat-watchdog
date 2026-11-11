@@ -17,9 +17,13 @@ actor commands. If CBPi crashes or hangs while a heater is on, the panel keeps
 the last `on` and the broker keeps serving it. A clean CBPi stop doesn't help
 either: CBPi 4.7.7 doesn't switch MQTT actors off on shutdown.
 
-CBPi does set an MQTT Last Will (`cbpi/disconnect`), but the broker only sends
-it after about 1.5× the keepalive (60 s by default), and it doesn't say which
-actors were on.
+CBPi does set an MQTT Last Will (`cbpi/disconnect`), but on its own it isn't
+enough: it doesn't say which actors were on, and for a hung CBPi whose TCP
+connection stays open, the broker only sends it after about 1.5× the
+keepalive (60 s by default). When the process dies or is killed, the
+connection drops and the broker sends it at once [Likely: standard MQTT
+broker behaviour, not measured here]. The blueprint uses it for that faster
+path.
 
 ## What it does
 
@@ -31,8 +35,9 @@ Two parts that share one contract:
    whatever is on.
 2. **Home Assistant blueprint**
    ([blueprints/cbpi_heartbeat_watchdog.yaml](blueprints/cbpi_heartbeat_watchdog.yaml)).
-   If the heartbeat goes silent for the timeout while actors are on, or a
-   `stopped` beat lists actors, it publishes each one's off payload (retained,
+   If the heartbeat goes silent for the timeout while actors are on, the
+   broker publishes CBPi's will (`cbpi/disconnect`) while the last beat listed
+   actors, or a `stopped` beat lists actors, it publishes each one's off payload (retained,
    like CBPi does) and runs your alert actions. With the optional latch
    (an `input_boolean`) it stays tripped: every later beat that lists actors
    as on gets their off re-sent at once, until you turn the latch off.
@@ -156,6 +161,15 @@ python3 -m pip wheel --no-deps --wheel-dir dist .
   - A `running` beat while latched re-sent the off at once, with no delay and
     no second alert.
   - After the latch was turned off, 5 s of silence tripped it again.
+- **Will trigger** (HA 2026.11, 2026-11-11), on scratch topics with a 5 s
+  timeout, read from the traces of a throwaway automation built from a test
+  copy of the blueprint:
+  - a beat listing one actor, then a message on the will topic: off published
+    0.16 s later, reason "CBPi dropped off the broker (MQTT will)";
+  - a beat, then silence: off published after 5.0 s;
+  - a `stopped` beat: off published in 8 ms (the wait's timeout is 0 there,
+    as it is while latched).
+  Not yet seen with CBPi's real will on the production broker.
 - **Production blueprint automation** (2026-11-10): created with a 15 s
   timeout and a latch. Live beats reach it once a second, with nothing on.
 - **Production install** (2026-11-10): v0.1.0 installed on a production CBPi

@@ -6,8 +6,9 @@ blueprint:
     every actor that is on, and its MQTT off payload, once a second.
 
 
-    If the heartbeat goes silent for the timeout, or CBPi stops cleanly with
-    actors still on, this publishes each one's off payload (retained, as CBPi
+    If the heartbeat goes silent for the timeout, the broker publishes CBPi's
+    MQTT will (CBPi's connection dropped), or CBPi stops cleanly with actors
+    still on, this publishes each one's off payload (retained, as CBPi
     does) and runs your alert actions. Actors that aren't MQTT actors (GPIO,
     relay boards) can't be switched off from here; they're named in the alert.
 
@@ -38,6 +39,15 @@ blueprint:
           min: 5
           max: 300
           unit_of_measurement: s
+    disconnect_topic:
+      name: CBPi will topic
+      description: >-
+        CBPi's MQTT last-will topic. The broker publishes it when CBPi's
+        connection drops (crash, kill, network), so this trips at once instead
+        of waiting out the timeout. CBPi 4.7.7 uses cbpi/disconnect.
+      default: cbpi/disconnect
+      selector:
+        text:
     allowed_topic_prefixes:
       name: Allowed actor topic prefixes
       description: Only actor topics starting with one of these are switched off.
@@ -100,17 +110,21 @@ actions:
     note: Nothing on, nothing to protect. Restart mode has already cancelled any pending run.
   - variables:
       latched: "{{ latch is string and latch != '' and is_state(latch, 'on') }}"
-  - if:
-      - condition: template
-        value_template: "{{ not latched and beat.state != 'stopped' }}"
-    then:
-      - delay:
-          seconds: "{{ timeout }}"
-        note: Each heartbeat restarts the run, so this only completes when they stop.
+  - wait_for_trigger:
+      - trigger: mqtt
+        topic: !input disconnect_topic
+    timeout:
+      seconds: "{{ 0 if latched or beat.state == 'stopped' else timeout }}"
+    continue_on_timeout: true
+    note: >-
+      Each heartbeat restarts the run, so this only completes when the beats
+      stop, or at once when the broker publishes CBPi's will. No wait when
+      latched or on a clean stop.
   - variables:
       reason: >-
         {{ 'Latched: CBPi still has actors on, off re-sent' if latched
            else 'CBPi stopped with actors still on' if beat.state == 'stopped'
+           else 'CBPi dropped off the broker (MQTT will)' if wait.trigger
            else 'No CBPi heartbeat for ' ~ timeout ~ ' s' }}
       to_switch: >-
         {% set ns = namespace(ok=[], hit=false) %}
