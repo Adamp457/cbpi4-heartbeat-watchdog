@@ -30,7 +30,8 @@ clients, so with any UI tab or kiosk open, aiohttp's graceful shutdown waits
 on them for 60 s. Under systemd's default 30 s stop timeout CBPi is
 SIGKILLed, so nothing registered for shutdown runs: no kettle stop, no state
 save, no final `stopped` beat. From 0.2.0 the plugin closes those clients when
-shutdown starts.
+shutdown starts. The same fix is proposed for CBPi itself in
+[PiBrewing/craftbeerpi4#203](https://github.com/PiBrewing/craftbeerpi4/pull/203).
 
 ## What it does
 
